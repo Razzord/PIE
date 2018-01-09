@@ -19,6 +19,47 @@ import matplotlib.pyplot as plot
 ###########            FUNCTIONS TO INIT ARRAYS           #####################
 ###############################################################################
 
+############################
+# NAME    : RKalpha6optim
+# DESC    : Runge-Kutta coefficients for time integration optimized for order 6
+#           EXTRACTED FROM PREVIOUS CODE : https://github.com/LeVieuxGui/PIE-SXS-2017-DFR/blob/master/SD/SDcombu_diff.py
+# INPUTS  : - p - degree of the polynomial
+# OUTPUTS : Array of coefficients
+############################
+def RKalpha6optim(p):
+    alpha = np.zeros(6)
+    alpha[2]=0.24662360430959
+    alpha[3]=0.33183954253762
+    alpha[4]=0.5
+    alpha[5]=1.0
+    if (p==2):
+            alpha[0]=0.05114987425612
+            alpha[1]=0.13834878188543
+    if (p==3):
+            alpha[0]=0.07868681448952
+            alpha[1]=0.12948018884941
+    if (p==4):
+            alpha[0]=0.06377275785911
+            alpha[1]=0.15384606858263
+    if (p==5):
+            alpha[0]=0.06964990321063
+            alpha[1]=0.13259436863348
+    if (p==6):
+            alpha[0]=0.06809977676724
+            alpha[1]=0.15779153065865
+    if (p==7):
+            alpha[0]=0.06961281995158
+            alpha[1]=0.14018408222804
+    if (p==8):
+            alpha[0]=0.07150767268798
+            alpha[1]=0.16219675431011
+    if (p==9):
+            alpha[0]= 0.06599710352324
+            alpha[1]=0.13834850670675
+    if (p==10):
+            alpha[0]=0.07268810031422
+            alpha[1]=0.16368178688643
+    return alpha
 
 ############################
 # NAME    : sd_init_sp
@@ -73,11 +114,11 @@ def sd_init_function(x):
     # f : [x_min; x_max] -> R
     #         x          ->    1/(sigma*sqrt(2*pi)) * exp( -(x - mean)^2 / ( 2 * sigma^2))
     
-    sigma = 0.15
-    mean = 0.25
+#    sigma = 0.15
+#    mean = 0.
 #    return 1.
-    return 1/(sigma * math.sqrt(2 * math.pi)) * math.exp(-math.pow((x - mean),2) / (2 * sigma * sigma))
-    
+#    return 1/(sigma * math.sqrt(2 * math.pi)) * math.exp(-math.pow((x - mean),2) / (2 * sigma * sigma))
+    return math.exp(-(x)**2/100)
 
 ############################
 # NAME    : sd_iso2phi and sd_phi2iso
@@ -212,8 +253,8 @@ def sd_loop_compute_fluxes(solution, mesh, mat_extrapol_flux, advection_speed, n
     for i in range(0, len(mesh)-1):
         iso = (mesh[i+1] - mesh[i])/2
         cell_solution[0:len(cell_solution)] = solution[i*n_solution_points:(i+1)*n_solution_points]/iso
-        cell_flux[0:len(cell_flux)] = mat_extrapol_flux.dot(cell_solution)
-        flux[i*n_flux_points:(i+1)*n_flux_points] = cell_flux*iso
+        cell_flux[0:len(cell_flux)] = np.dot(mat_extrapol_flux, cell_solution)
+        flux[i*n_flux_points:(i+1)*n_flux_points] = cell_flux
     
     return advection_speed * flux
    
@@ -232,47 +273,26 @@ def sd_loop_compute_solution(flux, mesh, mat_extrapol_solution, n_flux_points, n
     solution = np.zeros(((len(mesh)-1) * n_solution_points, 1))
     cell_flux = np.zeros((n_flux_points, 1))
     cell_solution = np.zeros((n_solution_points, 1))
-    iso = 0.
     
     for i in range(0, len(mesh)-1):
-        iso = (mesh[i+1] - mesh[i])/2
-        cell_flux[0:len(cell_flux)] = flux[i*n_flux_points:(i+1)*n_flux_points]/iso
-        cell_solution[0:len(cell_solution)] = mat_extrapol_solution.dot(cell_flux)
-        solution[i*n_solution_points:(i+1)*n_solution_points] = cell_solution*iso
+        cell_flux[0:len(cell_flux)] = flux[i*n_flux_points:(i+1)*n_flux_points]
+        cell_solution[0:len(cell_solution)] = np.dot(mat_extrapol_solution, cell_flux)
+        solution[i*n_solution_points:(i+1)*n_solution_points] = cell_solution
     
     return solution
-   
-############################
-# NAME    : sd_phi
-# DESC    : Compute the solution at t+dt
-# INPUTS  : - solution        - solution vector calculated at solution points
-#           - mesh            - Mesh used to sample the solution
-#           - mat_inter_flux  - extrapolation matrix for flux : mat[i, j] = Li(FPj)
-#           - mat_inter_sol   - extrapolation matrix for flux : mat[i, j] = Li(SPj)
-#           - advection_speed - advection speed
-#           - n_flux_points   - number of flux points in [0; 1]
-#           - n_sol_points    - number of solution points in [0; 1]
-# OUTPUTS : Solution array on the whole mesh calculated at solution_points at t+dt
-############################
-def sd_phi(solution, mesh, mat_inter_flux, mat_inter_sol, advection_speed, n_flux_points, n_sol_points):
-    flux = sd_loop_compute_fluxes(solution, mesh, mat_inter_flux, advection_speed, n_flux_points, n_sol_points)
-    flux_c = sd_loop_riemann(advection_speed, flux, n_flux_points, len(mesh)-1)
-    d_flux = sd_loop_compute_solution(flux_c, mesh, mat_inter_sol, n_flux_points, n_sol_points)
-    
-    return d_flux
 
 ###############################################################################
 ###########               INITIAL PARAMETERS              #####################
 ###############################################################################
-p = 2                        #Degree of the polynomial
-N = 1500                      #Number of cells in the mesh
+p = 3                        #Degree of the polynomial
+N = 34                      #Number of cells in the mesh
 n_sp = p+1                   #Number of solution points
 n_fp = p+2                   #Number of flux points
-x_min = -0.5                 #minimal x coordinate of the physical domain
-x_max = 2.                   #maximum x coordinate of the physical domain
-dt = 0.01                    #Time spte
-T = 10.                      #Simulated time
+x_min = -100                 #minimal x coordinate of the physical domain
+x_max = 100                  #maximum x coordinate of the physical domain
+n_steps = 20               #Number of time steps
 A = 10.                      #Advection speed
+CFL = 0.7
 
 
 ###############################################################################
@@ -288,36 +308,46 @@ inter_flux_mat = sd_init_mat_flux(sp, fp)
 inter_sol_mat = sd_init_mat_solution(sp, fp)
 x_sol_points = np.zeros(n_sp * N)
 x_flux_points = np.zeros(n_fp * N)
+alpha = RKalpha6optim(p)
+beta = np.sum(alpha)
+dt = CFL * (mesh[1] - mesh[0]) / (A*(p+1))
+T = n_steps*dt                      #Simulated time
 
-#Copy of the initial solution
-u0 = np.zeros((len(solution), 1))
-u0[0:len(u0)] = solution[0:len(solution)]
 
+#X coordinates (test)
 index_sol = 0
 index_flux = 0
 for i in range(0,len(mesh)-1):
     for j in range(0, len(sp)):
         x_sol_points[index_sol] = sd_iso2phi(mesh[i], mesh[i+1], sp[j])
         index_sol = index_sol + 1
-        
 
+#Copy of the initial solution
+u0 = np.zeros((len(solution), 1))
+u0[0:len(u0)] = solution[0:len(solution)]
+
+#Final solution
+u1 = np.zeros((len(solution), 1))
+t = 0.
+for i in range(0, len(u1)):
+    t = A*T
+    u1[i] = sd_init_function(x_sol_points[i] - t)
+
+
+##########################################################################################
 #Solving the advection equation
-for i in range(0, 100):
+for i in range(0, n_steps):
     
-#    Runge-Kutte RK4
-    k1 = sd_phi(solution, mesh, inter_flux_mat, inter_sol_mat, A, n_fp, n_sp)
-    k2 = sd_phi(solution + dt/2 * k1, mesh, inter_flux_mat, inter_sol_mat, A, n_fp, n_sp)
-    k3 = sd_phi(solution + dt/2 * k2, mesh, inter_flux_mat, inter_sol_mat, A, n_fp, n_sp)
-    k4 = sd_phi(solution + dt*k3, mesh, inter_flux_mat, inter_sol_mat, A, n_fp, n_sp)
-    solution = solution + dt/6 * (k1 + 2*(k2 + k3) + k4)
-    
-#    flux = sd_loop_compute_fluxes(solution, mesh, inter_flux_mat, A, n_fp, n_sp)
-#    flux_c = sd_loop_riemann(A, flux, n_fp, N)
-#    d_flux = sd_loop_compute_solution(flux_c, mesh, inter_sol_mat, n_fp, n_sp)
-    
-#    solution = solution - dt*d_flux
+#    Runge-Kutta loop
+    for j in range(0,len(alpha)):
+        flux = sd_loop_compute_fluxes(solution, mesh, inter_flux_mat, A, n_fp, n_sp)
+        flux_c = sd_loop_riemann(A, flux, n_fp, N)
+        d_flux = sd_loop_compute_solution(flux_c, mesh, inter_sol_mat, n_fp, n_sp)
+        
+        solution = solution - dt*alpha[j]*d_flux/beta
+        
+##########################################################################################
 
-print("MAX_FLUX = ", np.amax(flux_c))
-print("CELL_SIZE = ", mesh[1] - mesh[0])
 plot.plot(x_sol_points, u0, 'x')
-plot.plot(x_sol_points, solution, 'x')
+plot.plot(x_sol_points, u1, '-')
+plot.plot(x_sol_points, solution, '-o')
