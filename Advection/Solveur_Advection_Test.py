@@ -285,13 +285,13 @@ def sd_loop_compute_solution(flux, mesh, mat_extrapol_solution, n_flux_points, n
 ###########               INITIAL PARAMETERS              #####################
 ###############################################################################
 p = 3                        #Degree of the polynomial
-N = 34                      #Number of cells in the mesh
+N = 100                      #Number of cells in the mesh
 n_sp = p+1                   #Number of solution points
 n_fp = p+2                   #Number of flux points
 x_min = -100                 #minimal x coordinate of the physical domain
 x_max = 100                  #maximum x coordinate of the physical domain
-n_steps = 20               #Number of time steps
-A = 10.                      #Advection speed
+n_steps = 200               #Number of time steps
+A = 1.                      #Advection speed
 CFL = 0.7
 
 
@@ -309,7 +309,6 @@ inter_sol_mat = sd_init_mat_solution(sp, fp)
 x_sol_points = np.zeros(n_sp * N)
 x_flux_points = np.zeros(n_fp * N)
 alpha = RKalpha6optim(p)
-beta = np.sum(alpha)
 dt = CFL * (mesh[1] - mesh[0]) / (A*(p+1))
 T = n_steps*dt                      #Simulated time
 
@@ -339,12 +338,13 @@ for i in range(0, len(u1)):
 for i in range(0, n_steps):
     
 #    Runge-Kutta loop
+    solution0 = np.copy(solution)
     for j in range(0,len(alpha)):
         flux = sd_loop_compute_fluxes(solution, mesh, inter_flux_mat, A, n_fp, n_sp)
         flux_c = sd_loop_riemann(A, flux, n_fp, N)
         d_flux = sd_loop_compute_solution(flux_c, mesh, inter_sol_mat, n_fp, n_sp)
         
-        solution = solution - dt*alpha[j]*d_flux/beta
+        solution = solution0 - dt*alpha[j]*d_flux
         
 ##########################################################################################
 
