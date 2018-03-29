@@ -14,15 +14,15 @@ Created on Wed Jan 31 16:41:14 2018
 import math
 import numpy as np
 from scipy import interpolate
-
+from scipy.integrate import simps
 
 ###############################################################################
 #                               CONSTANTS                                     #
 ###############################################################################
 
 GAMMA = 0.5                        #GAMMA for continuity u
-ETA = 0.5                          #ETA et BETA for continuity sigma
-BETA = -0.5                        #add doi of kirby and Arnold
+ETA = -0.5                          #ETA et BETA for continuity sigma
+BETA = 0.5                        #add doi of kirby and Arnold
 
 ###############################################################################
 #                  FUNCTIONS : compute_error_matrix                           #
@@ -199,41 +199,46 @@ def compute_mat_evolution(scheme, diffusion_coefficient, delta_t, order_of_accur
     B6 = compute_mat_jump_relvment(order_of_accuracy+1, len(mesh) - 1)
         
     if scheme == 1:
-        global_evolution_matrix = B2.dot(extrapol_matrix)
-        global_evolution_matrix = deriv_matrix.dot(global_evolution_matrix)
-        global_evolution_matrix = extrapol_matrix.dot(global_evolution_matrix)
-        global_evolution_matrix = B2.dot(global_evolution_matrix)
-        global_evolution_matrix = deriv_matrix.dot(global_evolution_matrix)
+        global_evolution_matrix_1 = B2.dot(extrapol_matrix)
+        global_evolution_matrix_2 = deriv_matrix
+        global_evolution_matrix_2 = extrapol_matrix.dot(global_evolution_matrix_2)
+        global_evolution_matrix_2 = B2.dot(global_evolution_matrix_2)
+        global_evolution_matrix_2 = (diffusion_coefficient*(delta_t*2))*deriv_matrix.dot(global_evolution_matrix_2)
         
     elif scheme == 2:
-        M1 = B2.dot(extrapol_matrix)
+        M = extrapol_matrix
+        M1 = B2
         M1 = deriv_matrix.dot(M1)
         M1 = extrapol_matrix.dot(M1)
         M1 = B2.dot(M1)
         M1 = B4.dot(M1)
         
-        M2 = B2.dot(extrapol_matrix)
+        M2 = B2
         M2 = A3.dot(M2)
         M2 = B3.dot(M2)
         
-        M3 = B51.dot(extrapol_matrix)
+        M3 = B51
         
-        global_evolution_matrix = (diffusion_coefficient*(delta_t*2))*\
+        global_evolution_matrix_1 = M
+        global_evolution_matrix_2 = (diffusion_coefficient*(delta_t*2))*\
                                   deriv_matrix.dot(M1 + M2 - ETA*M3)
         
     if scheme == 3:
-        M12 = B2.dot(extrapol_matrix)
-        M13 = GAMMA*B51.dot(extrapol_matrix)
+        
+        M = extrapol_matrix
+        M12 = B2
+        M13 = GAMMA*B51
         M11 = M12 + M13
         M11 = deriv_matrix.dot(M11)
         M11 = extrapol_matrix.dot(M11)
         M1 = B2.dot(M11)
         
-        M2 = -ETA*B51.dot(extrapol_matrix)
+        M2 = -ETA*B51
         
         M3 = BETA*B51.dot(M11)
         
-        global_evolution_matrix = (diffusion_coefficient*(delta_t*2))*\
+        global_evolution_matrix_1 = M
+        global_evolution_matrix_2 = (diffusion_coefficient*(delta_t*2))*\
                                    deriv_matrix.dot(M1 + M2 + M3)
         
     elif scheme == 4:
@@ -245,22 +250,24 @@ def compute_mat_evolution(scheme, diffusion_coefficient, delta_t, order_of_accur
         else:
             A4 = np.linalg.inv(A4)
             
-            M1 = B2.dot(extrapol_matrix)
+            M = extrapol_matrix
+            M1 = B2
             M1 = deriv_matrix.dot(M1)
             M1 = extrapol_matrix.dot(M1) 
             M1 = B4.dot(M1)
             
-            M2 = B2.dot(extrapol_matrix)
+            M2 = B2
             M2 = A3.dot(M2)
             M2 = B3.dot(M2)
             
-            M3 = B6.dot(extrapol_matrix)
+            M3 = B6
             M3 = A5.dot(M3)
             M3 = A4.dot(M3) 
             M3 = B52.dot(M3)
             
-            global_evolution_matrix = (diffusion_coefficient*(delta_t*2))*\
-                                       deriv_matrix.dot(M1 + M2 - ETA*M3)
+            global_evolution_matrix_1 = M
+            global_evolution_matrix_2 = (diffusion_coefficient*(delta_t*2))*\
+                                       deriv_matrix.dot(M1 + M2 + ETA*M3)
     
     elif scheme == 5:
         
@@ -277,10 +284,11 @@ def compute_mat_evolution(scheme, diffusion_coefficient, delta_t, order_of_accur
         matrix_c = negative_values_matrix.dot(right_grad_deriv_matrix)
         matrix_d = positive_values_matrix.dot(left_grad_deriv_matrix)
         interface = sum_jump_matrix.dot(matrix_a + matrix_b) + sum_average_matrix.dot(matrix_c - matrix_d)*0.5
-                                                                 
-        global_evolution_matrix = deriv_matrix.dot(inner_sol_deriv_matrix + arrangement_matrix.dot(interface))*diffusion_coefficient*delta_t
         
-    return sol_point, global_evolution_matrix
+        global_evolution_matrix_1 = np.identity((len(mesh)-1)*order_of_accuracy)
+        global_evolution_matrix_2 = deriv_matrix.dot(inner_sol_deriv_matrix + arrangement_matrix.dot(interface))*diffusion_coefficient*delta_t
+        
+    return sol_point, global_evolution_matrix_1,global_evolution_matrix_2
 
 ###############################################################################
 #                  FUNCTIONS : RKalpha6optim                                  #
@@ -415,7 +423,7 @@ def compute_point_and_mat_extrapo(degree, mesh):
             global_extrapolation_matrix[i, n_solution_points*math.floor(i/n_flux_points)+j] =\
             local_extrapolation_matrix[i%n_flux_points, j]
      
-    #compute the global extrapolation matrix        
+    #compute the global derivative matrix        
     global_derivative_matrix = np.zeros((n_cells*n_solution_points, n_cells*n_flux_points))
             
     for i in range(0, n_cells*n_solution_points):
@@ -521,8 +529,9 @@ def brownien(x_coordinate, time, diffusion_coefficient, x_origin, amplitude, var
 #         var                   = variance of the gaussian
 # OUTPUT : value of the theoretical solution at time t
 # NOTE : The theoretical solution is defined as found in MasterThesis_Joncquieres
+#        or http://math.mit.edu/classes/18.086/2006/am54.pdf
 ###############################################################################"""
-    brownian_amplitude = amplitude / (2 * math.sqrt(diffusion_coefficient*time/var) + 1)
+    brownian_amplitude = amplitude / (math.sqrt(4*diffusion_coefficient*time/var+1))
     brownian_x = (x_coordinate - x_origin)
     brownian_var = 4*diffusion_coefficient*time + var
     brow = brownian_amplitude * math.exp(-brownian_x**2 / brownian_var)
@@ -705,3 +714,137 @@ def compute_gassner_matrices(solution_points, flux_points, mesh, delta_t, diffus
           sum_average_matrix, \
           arrangement_matrix)
     
+###############################################################################
+#                   FUNCTIONS : SAMPLING                                       #
+###############################################################################
+def compute_sampling_point_and_mat_extrapo(degree,sol_point,mesh,n_sampling_point) :
+    """
+###############################################################################
+# NAME : compute_sampling_point_and_mat_extrapo
+# DESC : function to compute the postion of sampling point and matrice of extrapolation at sampling point
+# INPUT : degree                = degree of the polynomial interpolation knowing that :
+#                                 number of solution points = degree + 1
+#                                 number of flux points = degree + 2
+#         sol_points            = coordinates of solution points in [-1; 1]
+#         mesh                  = coordinates of the interfaces of the cells
+#         n_sampling_point      = number of sampling point
+## OUTPUT : pos_all_sampling_points  = position of the sampling point in the mesh
+#           mat_global_extrapo_sol_sampling  = global matrix of extrapolation from solution points toward sampling points
+###############################################################################"""
+
+    size_of_domaine = len(mesh)
+    
+    #building local sampling point
+    pos_sampling_point = np.zeros(n_sampling_point)
+    for i in range(0,n_sampling_point):
+        pos_sampling_point.itemset(i,-1+(2*(i+1)/(n_sampling_point+1)));
+    
+    #building global sapmling point
+    pos_all_sampling_points = np.zeros(n_sampling_point*(len(mesh)-1))
+    for i in range(0,(size_of_domaine-1)):
+        for j in range(0,n_sampling_point):
+            pos_all_sampling_points[i*n_sampling_point+j] = \
+            (mesh[i+1] + mesh[i])*0.5+(mesh[i+1] - mesh[i])*0.5*(pos_sampling_point[j]);
+        
+    #building the extrapolation matrix sol point toward sampling point
+    mat_extrapo_sol_sampling = np.zeros((n_sampling_point,degree+1));
+    Id = np.identity(degree+1);
+    for j in range(0,degree+1):
+        Lag = interpolate.lagrange(sol_point,Id[j]);
+        for i in range(0,n_sampling_point):
+            mat_extrapo_sol_sampling[i,j] = Lag(pos_sampling_point[i]);    
+    
+    #compute the global extrapolation matrix        
+    mat_global_extrapo_sol_sampling = np.zeros(((size_of_domaine-1)*(n_sampling_point),(size_of_domaine-1)*(degree+1)));
+    
+    for i in range(0,(size_of_domaine-1)*(n_sampling_point)):
+        for j in range(0,degree+1):
+            mat_global_extrapo_sol_sampling[i,(degree+1)*math.floor(i/(n_sampling_point))+j] =\
+            mat_extrapo_sol_sampling[i%(n_sampling_point),j];
+            
+    return(pos_all_sampling_points,mat_global_extrapo_sol_sampling)
+            
+###############################################################################
+#                   FUNCTIONS : ANALYTIC MATRIX                               #
+###############################################################################
+def compute_sol_point_analytique(degree,n_sampling_point,size_of_domaine) :
+    """
+###############################################################################
+# NAME : compute_sol_point_analytique
+# DESC : function to compute the postion of the analytique solution point
+# INPUT : degree                = degree of the polynomial interpolation knowing that :
+#                                 number of solution points = degree + 1
+#                                 number of flux points = degree + 2
+## OUTPUT : sol_point_analytique  = position of the analytique solution point in the iso_cell
+###############################################################################"""           
+
+    n_solution_points = degree 
+    solution_point = np.zeros(n_solution_points)
+    polynom_chebyshev = np.polynomial.chebyshev.Chebyshev.basis(n_solution_points)
+    solution_point = np.polynomial.chebyshev.Chebyshev.roots(polynom_chebyshev)
+    
+    #building local sampling point
+    pos_sampling_point = np.zeros(n_sampling_point)
+    for i in range(0,n_sampling_point):
+        pos_sampling_point.itemset(i,-1+(2*(i+1)/(n_sampling_point+1)));
+        
+    #building the extrapolation matrix sol point toward sampling point
+    mat_extrapo_sol_sampling_analytique = np.zeros((n_sampling_point,degree+1));
+    Id = np.identity(degree+1);
+    for j in range(0,degree+1):
+        Lag = interpolate.lagrange(solution_point,Id[j]);
+        for i in range(0,n_sampling_point):
+            mat_extrapo_sol_sampling_analytique[i,j] = Lag(pos_sampling_point[i]);    
+    
+    #compute the global extrapolation matrix        
+    mat_global_extrapo_sol_sampling_analytique = np.zeros(((size_of_domaine-1)*(n_sampling_point),(size_of_domaine-1)*(degree)));
+    
+    for i in range(0,(size_of_domaine-1)*(n_sampling_point)):
+        for j in range(0,degree):
+            mat_global_extrapo_sol_sampling_analytique[i,(degree)*math.floor(i/(n_sampling_point))+j] =\
+            mat_extrapo_sol_sampling_analytique[i%(n_sampling_point),j];
+            
+    return(solution_point,mat_global_extrapo_sol_sampling_analytique)
+    
+###############################################################################
+#                  FUNCTIONS : compute_error                         #
+###############################################################################
+def compute_error(sol_at_sol_point,time,n_sampling_point,sol_points,order_of_accuracy,coord,x_middle,\
+                  AMPLITUDE,VAR,diffusion_coefficient):
+    """
+###############################################################################
+# NAME : compute_jump_av_matrix
+# DESC : Compute the jump and average matrices
+# INPUT : sol_at_sol_point = slution at solution point
+#         time             = time of the evaluation
+#         n_ech            = number of sampling
+#         sol_points            = coordinates of solution points in [-1; 1]
+#         mesh                  = coordinates of the interfaces of the cells
+#         order_of_accuracy      = degree
+#         x_middle,AMPLITUDE,VAR =param of the gaussian
+#         diffusion_coeffincient = 
+# OUTPUT : error = value of the error at this step time
+###############################################################################"""
+          
+    n_cells = len(coord) - 1
+    pos_all_sampling_points,mat_global_extrapo_sol_sampling = \
+           compute_sampling_point_and_mat_extrapo(order_of_accuracy-1 ,sol_points,coord,n_sampling_point)
+        
+    sol_all_sampling_point = mat_global_extrapo_sol_sampling.dot(sol_at_sol_point)
+          
+    theoretical_values = np.zeros(n_cells * n_sampling_point)
+    
+    for i, x_coord in enumerate(pos_all_sampling_points):
+                    theoretical_values[i] = \
+                           brownien(\
+                           x_coord, time, diffusion_coefficient, x_middle, AMPLITUDE, VAR)
+                           
+    difference = sol_all_sampling_point - theoretical_values
+    difference = difference*difference
+    
+    error = simps(difference, pos_all_sampling_points)
+    
+    return error
+    
+    
+
